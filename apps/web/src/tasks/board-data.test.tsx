@@ -1,0 +1,55 @@
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import { useBoardData, configQueryKey, taskQueryKey } from './use-board-data';
+import { useTaskMutations } from './use-task-mutations';
+import { taskFields } from './board-cache';
+import { config, deferred, makeTask, statusB } from '../test/fixtures';
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+const harness = () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return { client, wrapper };
+};
+const failure = () => HttpResponse.json({ error: { code: 'UNAVAILABLE', message: 'Try again', requestId: 'test' } }, { status: 400 });
+it('does not request tasks when board configuration is unavailable', async () => {
+  let taskRequests = 0;
+  server.use(http.get('*/api/board-config', failure), http.get('*/api/tasks', () => { taskRequests++; return HttpResponse.json({ data: [] }); }));
+  const { wrapper } = harness(); const { result } = renderHook(() => { const data = useBoardData(); return { configuration: { ...data.configuration }, tasks: { ...data.tasks } }; }, { wrapper });
+  await waitFor(() => expect(result.current.configuration.isError).toBe(true));
+  expect(result.current.tasks.data).toBeUndefined(); expect(taskRequests).toBe(0);
+});
+it('retains cached tasks when a background refresh fails', async () => {
+  const task = makeTask();
+  server.use(http.get('*/api/board-config', () => HttpResponse.json({ data: config })), http.get('*/api/tasks', () => HttpResponse.json({ data: [task] })));
+  const { wrapper } = harness(); const { result } = renderHook(() => { const data = useBoardData(); return { configuration: { ...data.configuration }, tasks: { ...data.tasks } }; }, { wrapper });
+  await waitFor(() => expect(result.current.tasks.data).toEqual([task]));
+  server.use(http.get('*/api/tasks', failure));
+  await act(async () => { await result.current.tasks.refetch(); });
+  await waitFor(() => expect(result.current.tasks.isError).toBe(true)); expect(result.current.tasks.data).toEqual([task]);
+});
+it('rolls back a failed task without undoing another overlapping successful save and releases locks', async () => {
+  const a = makeTask(); const b = makeTask({ id: '55555555-5555-4555-8555-555555555555', title: 'Other brief' });
+  const aResponse = deferred<Response>(); const bResponse = deferred<Response>();
+  const startedA = deferred<void>(); const startedB = deferred<void>();
+  server.use(http.put(`*/api/tasks/${a.id}`, () => { startedA.resolve(); return aResponse.promise; }), http.put(`*/api/tasks/${b.id}`, () => { startedB.resolve(); return bResponse.promise; }));
+  const { client, wrapper } = harness(); client.setQueryData(configQueryKey, config); client.setQueryData(taskQueryKey, [a, b]);
+  const { result } = renderHook(useTaskMutations, { wrapper });
+  let saveA!: Promise<unknown>; let saveB!: Promise<unknown>;
+  act(() => { saveA = result.current.execute({ kind: 'replace', task: a, fields: { ...taskFields(a), statusId: statusB } }).catch(error => error); saveB = result.current.execute({ kind: 'replace', task: b, fields: { ...taskFields(b), title: 'Saved B' } }); });
+  await Promise.all([startedA.promise, startedB.promise]);
+  expect(client.getQueryData(taskQueryKey)).toEqual([{ ...a, statusId: statusB }, { ...b, title: 'Saved B' }]);
+  await act(async () => { await expect(result.current.execute({ kind: 'delete', task: a })).rejects.toMatchObject({ code: 'TASK_PENDING' }); });
+  const savedB = { ...b, title: 'Saved B', version: 2 };
+  await act(async () => { bResponse.resolve(HttpResponse.json({ data: savedB })); await saveB; });
+  expect(result.current.pendingIds.has(a.id)).toBe(true);
+  await act(async () => { aResponse.resolve(failure()); await saveA; });
+  expect(client.getQueryData(taskQueryKey)).toEqual([a, savedB]);
+  expect(result.current.pendingIds.size).toBe(0); expect(result.current.feedback?.kind).toBe('error');
+});

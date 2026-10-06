@@ -1,0 +1,26 @@
+import { expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { TaskFormDialog } from './TaskFormDialog';
+import { ApiError } from '../api/http-client';
+import { config } from '../test/fixtures';
+it('validates configured limits and preserves the draft after a server rejection', async () => {
+  const user = userEvent.setup(); const onClose = vi.fn();
+  const onSave = vi.fn().mockRejectedValue(new ApiError('Validation changed', 422, 'VALIDATION_ERROR', { title: ['Choose another title.'] }));
+  render(<TaskFormDialog config={config} pending={false} onClose={onClose} onSave={onSave}/>);
+  await user.click(screen.getByRole('button', { name: 'Create task' }));
+  expect(screen.getByText('Give your task a title.')).toBeVisible();
+  await user.type(screen.getByLabelText(/Task title/), 'Long title exceeding limit');
+  await user.click(screen.getByRole('button', { name: 'Create task' }));
+  expect(screen.getByText('Title must be 12 characters or fewer.')).toBeVisible();
+  expect(onSave).not.toHaveBeenCalled();
+  await user.clear(screen.getByLabelText(/Task title/));
+  await user.type(screen.getByLabelText(/Task title/), 'New brief');
+  await user.type(screen.getByLabelText(/Description/), 'Preserve this context');
+  await user.click(screen.getByRole('button', { name: 'Create task' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Validation changed');
+  expect(screen.getByText('Choose another title.')).toBeVisible();
+  expect(screen.getByLabelText(/Task title/)).toHaveValue('New brief');
+  expect(screen.getByLabelText(/Description/)).toHaveValue('Preserve this context');
+  expect(onClose).not.toHaveBeenCalled();
+});

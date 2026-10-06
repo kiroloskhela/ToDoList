@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "scope": "project-local agent skills; application dependencies not installed",
+  "skills": [
+    {
+      "name": "frontend-design",
+      "source": "/Users/kiroloskhela/.agents/skills/frontend-design",
+      "installation": "copy of existing local skill",
+      "project_path": ".agents/skills/frontend-design/SKILL.md",
+      "skill_sha256": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd",
+      "file_count": 2
+    },
+    {
+      "name": "react-ui-patterns",
+      "source": "/Users/kiroloskhela/.agents/skills/react-ui-patterns",
+      "installation": "copy of existing local skill",
+      "project_path": ".agents/skills/react-ui-patterns/SKILL.md",
+      "skill_sha256": "ab7d275cbd9a8c91f5f92596988a0df9ddb1116096386ac9474b106a2fa670d1",
+      "file_count": 1
+    },
+    {
+      "name": "vercel-react-best-practices",
+      "source": "/Users/kiroloskhela/.agents/skills/vercel-react-best-practices",
+      "installation": "copy of existing local skill",
+      "project_path": ".agents/skills/vercel-react-best-practices/SKILL.md",
+      "skill_sha256": "71ed7794962fa6e803ee83030517b5b93a9f70fbfeb431ec4535c5480a8d8355",
+      "file_count": 76
+    },
+    {
+      "name": "web-design-guidelines",
+      "source": "/Users/kiroloskhela/.agents/skills/web-design-guidelines",
+      "installation": "copy of existing local skill",
+      "project_path": ".agents/skills/web-design-guidelines/SKILL.md",
+      "skill_sha256": "f4647ca866a3accf763777f83e7682954f0187cd6bea7eea0399796652414e8f",
+      "file_count": 1
+    },
+    {
+      "name": "playwright-e2e-builder",
+      "source": "/Users/kiroloskhela/.agents/skills/playwright-e2e-builder",
+      "installation": "copy of existing local skill",
+      "project_path": ".agents/skills/playwright-e2e-builder/SKILL.md",
+      "skill_sha256": "ea49dc571a42f6726245afcde30e91e7834bdee6fe5efd2f4b1e4c5f183d2272",
+      "file_count": 1
+    },
+    {
+      "name": "gsap-web",
+      "source": "https://github.com/iart-ai/web-animation-skills/tree/b6dba3eb759726845a44163ff0bad70dd9e7fbb6/skills/gsap-web",
+      "commit": "b6dba3eb759726845a44163ff0bad70dd9e7fbb6",
+      "installation": "skill-installer; repository license and referenced scripts bundled",
+      "project_path": ".agents/skills/gsap-web/SKILL.md",
+      "skill_sha256": "9c52294210b31258d27b18e4102b4ec390bc21e95b11f663d932056fb3cb1740",
+      "file_count": 11
+    },
+    {
+      "name": "accessible-animation",
+      "source": "https://github.com/iart-ai/web-animation-skills/tree/b6dba3eb759726845a44163ff0bad70dd9e7fbb6/skills/accessible-animation",
+      "commit": "b6dba3eb759726845a44163ff0bad70dd9e7fbb6",
+      "installation": "skill-installer; repository license and referenced scripts bundled",
+      "project_path": ".agents/skills/accessible-animation/SKILL.md",
+      "skill_sha256": "29d5fec1be9fa5e978738c313678974f61c06443e02ffce1bdc20434dfb0a767",
+      "file_count": 8
+    },
+    {
+      "name": "60fps-animation",
+      "source": "https://github.com/iart-ai/web-animation-skills/tree/b6dba3eb759726845a44163ff0bad70dd9e7fbb6/skills/60fps-animation",
+      "commit": "b6dba3eb759726845a44163ff0bad70dd9e7fbb6",
+      "installation": "skill-installer; repository license and referenced scripts bundled",
+      "project_path": ".agents/skills/60fps-animation/SKILL.md",
+      "skill_sha256": "deb5d78aabae2289cbe161733be81aca6c3b4cd0940c0df3acf10196efdfe962",
+      "file_count": 8
+    }
+  ]
+}

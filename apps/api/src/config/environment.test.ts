@@ -1,0 +1,4 @@
+import { expect,it } from 'vitest';
+import { readEnvironment } from './environment.js';
+it('coerces deployment settings and ignores unrelated process secrets',()=>{const parsed=readEnvironment({DATABASE_URL:'postgresql://user:password@localhost/board',PORT:'8080',DB_POOL_MAX:'5',UNRELATED_SECRET:'private'});expect(parsed.PORT).toBe(8080);expect(parsed.DB_POOL_MAX).toBe(5);expect(parsed).not.toHaveProperty('UNRELATED_SECRET');});
+it.each([{DATABASE_URL:'https://example.com/secret'},{DATABASE_URL:'postgresql://localhost/db',DB_POOL_MAX:'0'},{DATABASE_URL:'postgresql://localhost/db',PORT:'65536'},{DATABASE_URL:'postgresql://localhost/db',DB_LOCK_TIMEOUT_MS:'1'}])('rejects unsafe configuration without disclosing values',input=>{try{readEnvironment(input);throw new Error('accepted invalid config');}catch(error){expect((error as Error).message).toMatch(/^Invalid environment fields:/);expect((error as Error).message).not.toContain(input.DATABASE_URL);}});

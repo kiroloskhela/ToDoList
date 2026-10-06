@@ -1,0 +1,39 @@
+{
+  "name": "task-board",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "prepare": "npm run build -w @task-board/contracts",
+    "dev": "node scripts/dev.mjs",
+    "db:setup": "node scripts/local-db.mjs",
+    "db:stop": "node scripts/local-db.mjs stop",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
+    "build": "npm run build -w @task-board/contracts && npm run build -w @task-board/api && npm run build -w @task-board/web",
+    "start": "node --env-file-if-exists=.env apps/api/dist/server.js",
+    "typecheck": "npm run build -w @task-board/contracts && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
+    "lint": "eslint apps packages scripts --max-warnings=0",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit --project web",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test -c apps/web/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.10.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "eslint": "9.39.5",
+    "globals": "16.5.0",
+    "jsdom": "^27.4.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.48.1",
+    "vitest": "4.1.11"
+  }
+}

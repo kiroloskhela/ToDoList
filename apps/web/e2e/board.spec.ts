@@ -1,0 +1,111 @@
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { boardConfigSchema, taskSchema, type BoardConfig, type Task } from '@task-board/contracts';
+const api = 'http://127.0.0.1:3002';
+let config: BoardConfig;
+test.beforeEach(async ({ request }) => {
+  const response = await request.get(`${api}/board-config`); expect(response.ok()).toBeTruthy(); config = boardConfigSchema.parse((await response.json()).data);
+  const tasks = (await (await request.get(`${api}/tasks`)).json()).data as Task[];
+  for (const task of tasks) expect((await request.delete(`${api}/tasks/${task.id}`, { headers: { 'If-Match': `"${task.id}:${task.version}"` } })).ok()).toBeTruthy();
+});
+const seed = async (request: APIRequestContext, title: string) => {
+  const response = await request.post(`${api}/tasks`, { data: { title, description: 'Browser test context', statusId: config.defaultStatusId, priorityId: config.defaultPriorityId } });
+  expect(response.ok()).toBeTruthy(); return taskSchema.parse((await response.json()).data);
+};
+const openBoard = async (page: Page) => { await page.goto('/'); await expect(page.getByRole('button', { name: 'New task', exact: true })).toBeVisible(); };
+test('creates, edits, moves, and deletes tasks with persistence after reload', async ({ page, request }) => {
+  await openBoard(page); await page.getByRole('button', { name: 'New task', exact: true }).click();
+  await page.getByLabel('Task title').fill('Persisted browser task'); await page.getByLabel('Description').fill('Saved description');
+  await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Persisted browser task', exact: true })).toBeVisible(); await page.reload();
+  await page.getByRole('button', { name: 'Edit Persisted browser task', exact: true }).click();
+  await page.getByLabel('Task title').fill('Updated browser task'); await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const destination = config.statuses.find(status => status.id !== config.defaultStatusId)!;
+  const move = page.getByLabel('Move Updated browser task to column'); await expect(move).toBeEnabled(); await move.click(); await page.getByRole('option', { name: destination.label, exact: true }).click();
+  await expect(page.getByRole('region', { name: destination.label }).getByRole('article', { name: 'Updated browser task' })).toBeVisible();
+  await page.reload(); await expect(page.getByRole('region', { name: destination.label }).getByRole('article', { name: 'Updated browser task' })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete Updated browser task', exact: true }).click(); await page.getByRole('button', { name: 'Delete task', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Updated browser task' })).toHaveCount(0); await page.reload();
+  expect((await (await request.get(`${api}/tasks`)).json()).data).toEqual([]);
+});
+test('pointer drag moves a task into an empty configured column', async ({ page, request }) => {
+  await seed(request, 'Drag destination'); await openBoard(page);
+  const destination = config.statuses.find(status => status.id !== config.defaultStatusId)!;
+  const handle = page.getByRole('button', { name: 'Drag Drag destination', exact: true });
+  const region = page.getByRole('region', { name: destination.label }); const from = await handle.boundingBox(); const to = await region.boundingBox();
+  expect(from).not.toBeNull(); expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2); await page.mouse.down();
+  await page.mouse.move(from!.x + from!.width / 2 + 15, from!.y + from!.height / 2, { steps: 3 });
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 15 }); await page.mouse.up();
+  await expect(region.getByRole('article', { name: 'Drag destination' })).toBeVisible(); await page.reload();
+  await expect(region.getByRole('article', { name: 'Drag destination' })).toBeVisible();
+});
+test('failed optimistic move returns the task to its original column', async ({ page, request }) => {
+  await seed(request, 'Rollback task'); await openBoard(page);
+  await page.route('**/api/tasks/*', route => route.request().method() === 'PUT' ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'UNAVAILABLE', message: 'Save failed for test', requestId: 'browser-test' } }) }) : route.continue());
+  const destination = config.statuses.find(status => status.id !== config.defaultStatusId)!;
+  await page.getByLabel('Move Rollback task to column').click(); await page.getByRole('option', { name: destination.label, exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Save failed for test');
+  await expect(page.getByRole('region', { name: config.statuses.find(status => status.id === config.defaultStatusId)!.label }).getByRole('article', { name: 'Rollback task' })).toBeVisible();
+});
+test('dialog traps focus and Escape restores the trigger', async ({ page }) => {
+  await openBoard(page); const trigger = page.getByRole('button', { name: 'New task', exact: true }); await trigger.click();
+  const dialog = page.getByRole('dialog'); await expect(page.getByLabel('Task title')).toBeFocused();
+  await page.keyboard.press('Shift+Tab'); await expect(dialog.getByRole('button', { name: 'Close dialog' })).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(page.getByLabel('Task title')).toBeFocused();
+  await trigger.evaluate(element => (element as HTMLElement).focus());
+  expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+});
+for (const width of [375, 768]) test(`board and form fit a ${width}px viewport`, async ({ page, request }, testInfo) => {
+  await page.setViewportSize({ width, height: 900 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await seed(request, 'Responsive task'); await openBoard(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`board-${width}px.png`), fullPage: true });
+  await page.getByRole('button', { name: 'New task', exact: true }).click(); await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+test('live reduced-motion changes clear animation styles while controls remain usable', async ({ page, request }, testInfo) => {
+  await seed(request, 'Motion task'); await page.emulateMedia({ reducedMotion: 'no-preference' }); await openBoard(page);
+  const card = page.getByRole('article', { name: 'Motion task' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => card.locator('.task-card').evaluate(element => ({ opacity: (element as HTMLElement).style.opacity, transform: (element as HTMLElement).style.transform }))).toEqual({ opacity: '', transform: '' });
+  await page.getByRole('button', { name: 'Edit Motion task', exact: true }).click(); await expect(page.getByLabel('Task title')).toBeFocused();
+  await page.keyboard.press('Escape'); await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(card).toBeVisible(); await page.reload(); await expect(card).toBeVisible();
+  await expect.poll(() => card.locator('.task-card').evaluate(element => (element as HTMLElement).style.opacity)).toBe('');
+  await page.screenshot({ path: testInfo.outputPath('board-desktop.png'), fullPage: true });
+});
+test('keyboard dragging reaches an empty column and saves the new status', async ({ page, request }) => {
+  await seed(request, 'Keyboard task'); await openBoard(page);
+  const startIndex = config.statuses.findIndex(status => status.id === config.defaultStatusId);
+  const destination = config.statuses[startIndex + 1] ?? config.statuses[startIndex - 1]!;
+  const handle = page.getByRole('button', { name: 'Drag Keyboard task', exact: true }); await handle.focus(); await page.keyboard.press('Space');
+  await expect(handle).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press(startIndex + 1 < config.statuses.length ? 'ArrowRight' : 'ArrowLeft');
+  await expect(page.getByText(new RegExp(`was moved over droppable area ${destination.id}`))).toBeAttached();
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('region', { name: destination.label }).getByRole('article', { name: 'Keyboard task' })).toBeVisible();
+  await page.reload(); await expect(page.getByRole('region', { name: destination.label }).getByRole('article', { name: 'Keyboard task' })).toBeVisible();
+});
+test('custom dropdown supports keyboard selection, Escape, focus return and modal choices', async ({ page, request }) => {
+  await seed(request, 'Dropdown task'); await openBoard(page);
+  const filter = page.getByRole('combobox', { name: 'Filter by priority' });
+  await filter.focus(); await page.keyboard.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible(); await expect(page.getByRole('option', { name: 'All priorities', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape'); await expect(page.getByRole('listbox')).toHaveCount(0); await expect(filter).toBeFocused();
+  await filter.press('Enter');
+  await expect(page.getByRole('option', { name: 'All priorities', exact: true })).toBeFocused();
+  await page.keyboard.press('End'); await expect(page.getByRole('option', { name: config.priorities.at(-1)!.label, exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(filter).toHaveText(config.priorities.at(-1)!.label); await expect(filter).toBeFocused();
+  await filter.click(); await page.getByRole('option', { name: 'All priorities', exact: true }).click();
+  await page.getByRole('button', { name: 'New task', exact: true }).click();
+  const dialog = page.getByRole('dialog'); await dialog.getByRole('combobox', { name: 'Priority', exact: true }).click();
+  await page.getByRole('option', { name: config.priorities[0]!.label, exact: true }).click();
+  await expect(dialog.getByRole('combobox', { name: 'Priority', exact: true })).toHaveText(config.priorities[0]!.label);
+  const destination = config.statuses.find(status => status.id !== config.defaultStatusId)!;
+  await dialog.getByRole('combobox', { name: 'Column', exact: true }).click(); await page.getByRole('option', { name: destination.label, exact: true }).click();
+  await expect(dialog.getByRole('combobox', { name: 'Column', exact: true })).toHaveText(destination.label);
+  await page.getByLabel('Task title').fill('Modal dropdown task'); await dialog.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(page.getByRole('region', { name: destination.label }).getByRole('article', { name: 'Modal dropdown task' })).toBeVisible();
+});

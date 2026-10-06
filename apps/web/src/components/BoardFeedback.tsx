@@ -1,0 +1,3 @@
+import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import type { Feedback } from '../tasks/use-task-mutations';
+export const BoardFeedback = ({ feedback, onDismiss }: { feedback: Feedback | null; onDismiss: () => void }) => <div className="feedback-region" aria-live="polite" aria-atomic="true">{feedback && <div className={`feedback ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.kind === 'error' ? <AlertCircle aria-hidden="true" size={18}/> : <CheckCircle2 aria-hidden="true" size={18}/>}<span>{feedback.message}</span><button className="icon-button" aria-label="Dismiss notification" onClick={onDismiss}><X aria-hidden="true" size={16}/></button></div>}</div>;
